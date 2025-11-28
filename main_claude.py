@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 from PIL import Image
-from ultralytics import YOLO  # <--- [NEW] Import YOLO
+from ultralytics import YOLO
 
 # ==========================================
 # 1. MODEL DEFINITION
@@ -35,7 +35,7 @@ class GazeNet(nn.Module):
 # ==========================================
 MODEL_PATH = "my_gaze_model.pth"
 ALARM_PATH = "alarm.wav"
-YOLO_MODEL_PATH = "yolov8n.pt" # <--- [NEW] YOLO Model
+YOLO_MODEL_PATH = "yolov8n.pt"
 
 # --- THRESHOLDS ---
 GAZE_LIMIT_HORIZONTAL = 15.0  
@@ -48,7 +48,7 @@ EAR_THRESHOLD = 0.22
 
 # --- PHONE DETECTION CONFIG ---
 PHONE_CONFIDENCE = 0.5
-PHONE_CHECK_INTERVAL = 15 # Run YOLO every 15 frames to prevent lag
+PHONE_CHECK_INTERVAL = 15 
 
 EYE_GAIN = 3.0
 ZOOM_FACTOR = 1.6
@@ -72,7 +72,7 @@ except:
 
 print("⏳ Loading YOLO Model (First run will download weights)...")
 try:
-    phone_model = YOLO(YOLO_MODEL_PATH) # <--- [NEW] Load YOLO
+    phone_model = YOLO(YOLO_MODEL_PATH)
     print("✅ YOLO Model loaded.")
 except Exception as e:
     print(f"❌ Error loading YOLO: {e}")
@@ -192,8 +192,8 @@ def calculate_ear(landmarks, indices):
 # 5. MAIN LOOP
 # ==========================================
 print("📷 Starting Enhanced Focus Detector (Phone + Eyes + Head)...")
-print("   Press 'c' to recalibrate.")
-print("   Press 'd' to toggle debug mode.")
+print("   Press 'c' to recalibrate.")
+print("   Press 'd' to toggle debug mode.")
 
 debug_mode = False
 frame_count = 0
@@ -206,35 +206,27 @@ while True:
     if not ret:
         break
 
-    # Maintain raw frame for YOLO (no flip yet, or flip before YOLO)
-    # To keep coordinates consistent, we flip everything first
     frame = cv2.flip(frame, 1) 
     
     img_h, img_w, _ = frame.shape
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     
-    # --- [NEW] PHONE DETECTION (Optimized) ---
-    # Running YOLO every frame is slow on CPU, so we run it every N frames
     if frame_count % PHONE_CHECK_INTERVAL == 0:
-        # Class 67 is 'cell phone' in COCO dataset
         yolo_results = phone_model(frame, classes=[67], conf=PHONE_CONFIDENCE, verbose=False)
         
         if len(yolo_results[0].boxes) > 0:
             phone_detected_buffer = True
-            # Get box coordinates for drawing
-            box = yolo_results[0].boxes[0].xyxy[0].cpu().numpy() # x1, y1, x2, y2
+            box = yolo_results[0].boxes[0].xyxy[0].cpu().numpy()
             phone_box = box.astype(int)
         else:
             phone_detected_buffer = False
             phone_box = None
 
-    # --- Draw Phone Box (if detected in last check) ---
     if phone_detected_buffer and phone_box is not None:
         cv2.rectangle(frame, (phone_box[0], phone_box[1]), (phone_box[2], phone_box[3]), (0, 0, 255), 3)
         cv2.putText(frame, "PHONE DETECTED", (phone_box[0], phone_box[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
 
-    # --- FACIAL PROCESSING ---
     results = face_mesh.process(rgb_frame)
     
     is_distracted = False
@@ -245,7 +237,6 @@ while True:
     override_text = ""
     frame_count += 1
 
-    # Apply Phone Logic
     if phone_detected_buffer:
         is_distracted = True
         is_on_phone = True
@@ -255,18 +246,15 @@ while True:
         for face_landmarks in results.multi_face_landmarks:
             landmarks = face_landmarks.landmark
 
-            # --- DROWSINESS CHECK ---
             left_ear = calculate_ear(landmarks, LEFT_EYE_IDXS)
             right_ear = calculate_ear(landmarks, RIGHT_EYE_IDXS)
             avg_ear = (left_ear + right_ear) / 2.0
 
-            # --- HEAD POSE ---
             head_pitch, head_yaw, head_roll = get_head_pose_ratio(landmarks, img_w, img_h)
             head_yaw = max(-85, min(85, head_yaw))
             head_pitch = max(-85, min(85, head_pitch))
             head_roll = max(-85, min(85, head_roll))
 
-            # --- EYE SELECTION ---
             if head_yaw > 15:
                 p1, p2 = landmarks[33], landmarks[133]
                 is_right_eye_landmark = True
@@ -277,7 +265,6 @@ while True:
                 p1, p2 = landmarks[33], landmarks[133]
                 is_right_eye_landmark = True
 
-            # --- EYE EXTRACTION & PREDICTION ---
             cx, cy = int((p1.x + p2.x)/2 * img_w), int((p1.y + p2.y)/2 * img_h)
             width = abs(int((p1.x - p2.x) * img_w))
             crop = max(int(width * ZOOM_FACTOR), 30)
@@ -291,7 +278,6 @@ while True:
                 raw_eye_yaw = -raw_eye_yaw
                 raw_eye_pitch = -raw_eye_pitch
 
-            # --- CALCULATION ---
             eye_yaw_deg = raw_eye_yaw * 57.3 * EYE_GAIN
             eye_pitch_deg = raw_eye_pitch * 57.3 * EYE_GAIN
 
@@ -311,7 +297,6 @@ while True:
             prev_global_yaw = global_yaw
             prev_global_pitch = global_pitch
 
-            # --- CALIBRATION ROUTINE ---
             if not calibrated:
                 effective_yaw = global_yaw
                 effective_pitch = global_pitch
@@ -339,18 +324,13 @@ while True:
                 rel_head_yaw = head_yaw - calib_head_yaw
                 rel_head_pitch = head_pitch - calib_head_pitch
 
-                # --- DECISION LOGIC ---
-                
-                # 1. PHONE CHECK (Already handled at start of loop)
                 if is_on_phone:
-                    pass # Already true
+                    pass
 
-                # 2. DROWSINESS CHECK
                 elif avg_ear < EAR_THRESHOLD:
                     is_distracted = True
                     is_sleeping = True
                 
-                # 3. GAZE CHECKS
                 elif abs(rel_head_yaw) > HARD_HEAD_LIMIT:
                     is_distracted = True
                 elif abs(effective_yaw) > GAZE_LIMIT_HORIZONTAL:
@@ -360,7 +340,6 @@ while True:
                 elif effective_pitch > GAZE_LIMIT_DOWN:
                     is_distracted = True
 
-                # --- OVERRIDES (Only if not sleeping or on phone) ---
                 if not is_sleeping and not is_on_phone:
                     head_yaw_safe = abs(rel_head_yaw) < COMP_HEAD_LIMIT
                     if head_yaw_safe:
@@ -393,14 +372,12 @@ while True:
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 1)
 
     else:
-        # If no face, but phone detected? Still distracted.
         if is_on_phone:
              is_distracted = True
         else:
              is_distracted = True
              status_text = "NO FACE"
 
-    # --- 8. ALARM & TIMER ---
     if is_distracted:
         focused_frame_count = 0
         if distraction_start_time is None:
@@ -413,10 +390,9 @@ while True:
                 alarm_sound.stop()
                 is_alarm_active = False
 
-    # --- 9. DRAW UI ---
     if distraction_start_time is not None:
         elapsed = time.time() - distraction_start_time
-        if elapsed > ALARM_DELAY or is_on_phone: # Immediate alarm for phone
+        if elapsed > ALARM_DELAY or is_on_phone:
             if is_sleeping:
                 status_text = "WAKE UP!"
             elif is_on_phone:
