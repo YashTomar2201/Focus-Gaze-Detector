@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Guardian - AI Study Monitor</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            padding: 40px;
+        }
+
+        .video-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        #videoFeed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .status-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .status-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-focused .status-dot {
+            background: #10b981;
+        }
+
+        .status-warning .status-dot {
+            background: #f59e0b;
+        }
+
+        .status-alert .status-dot {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        .stat-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .detection-status {
+            display: grid;
+            gap: 10px;
+        }
+
+        .detection-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+
+        .detection-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .detection-active {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .detection-inactive {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .settings-group {
+            margin-bottom: 20px;
+        }
+
+        .settings-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #e5e7eb;
+            outline: none;
+            -webkit-appearance: none;
+appearance: none;       /* <--- Add this line */
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+
+        .slider-value {
+            text-align: right;
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .alert-box {
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .feature-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 Focus Guardian</h1>
+            <p>AI-Powered Study Monitoring System</p>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+                <span class="feature-badge">👁️ Eye Tracking</span>
+                <span class="feature-badge">👤 Face Detection</span>
+                <span class="feature-badge">📱 Phone Detection</span>
+                <span class="feature-badge">😴 Drowsiness Alert</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Video Section -->
+            <div class="video-section">
+                <div class="video-container">
+                    <img id="videoFeed" src="/video_feed" alt="Camera Feed">
+                    <div class="status-overlay">
+                        <div class="status-indicator status-focused" id="statusIndicator">
+                            <div class="status-dot"></div>
+                            <span id="statusText">System Ready</span>
+                        </div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 5px;">
+                            <span id="detailText">Press Start to begin monitoring</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" id="startBtn">
+                        ▶️ Start Monitoring
+                    </button>
+                    <button class="btn btn-secondary" id="calibrateBtn" disabled>
+                        🎯 Recalibrate
+                    </button>
+                    <button class="btn btn-secondary" id="stopBtn" disabled>
+                        ⏸️ Stop
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Session Stats -->
+                <div class="card">
+                    <div class="card-title">📊 Session Statistics</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Focus Time</span>
+                            <span class="stat-value" id="focusTime">00:00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Distractions</span>
+                            <span class="stat-value" id="distractionCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Focus Score</span>
+                            <span class="stat-value" id="focusScore">100%</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 5px;">
+                            Overall Performance
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="performanceBar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detection Status -->
+                <div class="card">
+                    <div class="card-title">🎯 Detection Systems</div>
+                    <div class="detection-status">
+                        <div class="detection-item">
+                            <div class="detection-icon detection-inactive" id="faceIcon">👤</div>
+                            <div>
+                                <div style="font-weight: 500;">Face Tracking</div>
+                                <div style="font-size: 0.85rem; color: #6b7280;" id="faceStatus">Inactive</div>
+                            </div>
+                        </div>
+                        <div class="detection-item">
+                            <div class="detection-icon detection-inactive" id="eyeIcon">👁️</div>
+                            <div>
+                                <div style="font-weight: 500;">Eye Gaze</div>
+                                <div style="font-size: 0.85rem; color: #6b7280;" id="eyeStatus">Inactive</div>
+                            </div>
+                        </div>
+                        <div class="detection-item">
+                            <div class="detection-icon detection-inactive" id="phoneIcon">📱</div>
+                            <div>
+                                <div style="font-weight: 500;">Phone Detection</div>
+                                <div style="font-size: 0.85rem; color: #6b7280;" id="phoneStatus">Inactive</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings -->
+                <div class="card">
+                    <div class="card-title">⚙️ Settings</div>
+                    
+                    <div class="settings-group">
+                        <label>Alert Delay (seconds)</label>
+                        <input type="range" class="slider" id="alertDelay" min="1" max="10" value="3">
+                        <div class="slider-value"><span id="alertDelayValue">3</span>s</div>
+                    </div>
+
+                    <div class="settings-group">
+                        <label>Eye Sensitivity</label>
+                        <input type="range" class="slider" id="eyeSensitivity" min="50" max="150" value="100">
+                        <div class="slider-value"><span id="eyeSensitivityValue">100</span>%</div>
+                    </div>
+
+                    <div class="settings-group">
+                        <label>Face Sensitivity</label>
+                        <input type="range" class="slider" id="faceSensitivity" min="50" max="150" value="100">
+                        <div class="slider-value"><span id="faceSensitivityValue">100</span>%</div>
+                    </div>
+
+                    <div class="alert-box alert-info">
+                        💡 <strong>Tip:</strong> Increase sensitivity for stricter monitoring, decrease for a more relaxed experience.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let isMonitoring = false;
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSmJ0fPTgjMGHm7A7+OZUQ4PWK/m77BgHA5An+L1wGwlByN9ze7dkTgKFFyw5+qnVBQKRp7f87tqIQU=');
+
+        // DOM Elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const calibrateBtn = document.getElementById('calibrateBtn');
+        const statusText = document.getElementById('statusText');
+        const detailText = document.getElementById('detailText');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const alertDelay = document.getElementById('alertDelay');
+        const eyeSensitivity = document.getElementById('eyeSensitivity');
+        const faceSensitivity = document.getElementById('faceSensitivity');
+
+        // Update slider values
+        alertDelay.oninput = () => {
+            document.getElementById('alertDelayValue').textContent = alertDelay.value;
+            updateSettings();
+        };
+        eyeSensitivity.oninput = () => {
+            document.getElementById('eyeSensitivityValue').textContent = eyeSensitivity.value;
+            updateSettings();
+        };
+        faceSensitivity.oninput = () => {
+            document.getElementById('faceSensitivityValue').textContent = faceSensitivity.value;
+            updateSettings();
+        };
+
+        function updateSettings() {
+            fetch('/update_settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    alertDelay: alertDelay.value,
+                    eyeSensitivity: eyeSensitivity.value,
+                    faceSensitivity: faceSensitivity.value
+                })
+            });
+        }
+
+        // Start monitoring
+        startBtn.onclick = async () => {
+            const response = await fetch('/start_monitoring', {method: 'POST'});
+            if (response.ok) {
+                isMonitoring = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                calibrateBtn.disabled = false;
+            }
+        };
+
+        // Stop monitoring
+        stopBtn.onclick = async () => {
+            const response = await fetch('/stop_monitoring', {method: 'POST'});
+            if (response.ok) {
+                isMonitoring = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                calibrateBtn.disabled = true;
+                updateStatus('stopped', 'Monitoring Stopped', 'Session ended');
+            }
+        };
+
+        // Calibrate
+        calibrateBtn.onclick = async () => {
+            await fetch('/calibrate', {method: 'POST'});
+            updateStatus('calibrating', 'Calibrating...', 'Look at the screen');
+        };
+
+        // Update status display
+        function updateStatus(status, mainText, detail) {
+            statusText.textContent = mainText;
+            detailText.textContent = detail;
+            
+            statusIndicator.className = 'status-indicator';
+            if (status === 'focused' || status === 'stopped' || status === 'calibrating') {
+                statusIndicator.classList.add('status-focused');
+            } else if (status === 'warning') {
+                statusIndicator.classList.add('status-warning');
+            } else if (status === 'alert') {
+                statusIndicator.classList.add('status-alert');
+            }
+        }
+
+        // Update detection icons
+        function updateDetection(type, active) {
+            const icon = document.getElementById(`${type}Icon`);
+            const status = document.getElementById(`${type}Status`);
+            
+            icon.classList.remove('detection-active', 'detection-inactive');
+            if (active) {
+                icon.classList.add('detection-active');
+                status.textContent = 'Active';
+                status.style.color = '#16a34a';
+            } else {
+                icon.classList.add('detection-inactive');
+                status.textContent = 'Inactive';
+                status.style.color = '#6b7280';
+            }
+        }
+
+        // Socket.io event handlers
+        socket.on('status_update', (data) => {
+            updateStatus(data.status, data.message, data.detail);
+            updateDetection('face', data.face_active);
+            updateDetection('eye', data.eye_active);
+            updateDetection('phone', data.phone_active);
+        });
+
+        socket.on('alert', (data) => {
+            if (data.type === 'distraction') {
+                audio.play();
+            }
+        });
+
+        // Update stats periodically
+        setInterval(async () => {
+            if (isMonitoring) {
+                const response = await fetch('/get_stats');
+                const stats = await response.json();
+                
+                document.getElementById('focusTime').textContent = stats.focusTime;
+                document.getElementById('distractionCount').textContent = stats.distractionCount;
+                document.getElementById('focusScore').textContent = stats.focusScore;
+                
+                const score = parseInt(stats.focusScore);
+                document.getElementById('performanceBar').style.width = score + '%';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
